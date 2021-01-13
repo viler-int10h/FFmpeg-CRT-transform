@@ -174,50 +174,53 @@ if errorlevel 1 exit /b
 
 SET SCALESRC=%2
 if "%IS_VIDEO%" == "1" if %P_DECAY_FACTOR% gtr 0 (
-		ffmpeg -hide_banner -y^
-		-i %2 ^
-		-filter_complex ^"^
-			[0] split [orig][2lag]; ^
-			[2lag] lagfun=%P_DECAY_FACTOR% [lag]; ^
-			[orig][lag] blend=all_mode='lighten':all_opacity=%P_DECAY_ALPHA%^" ^
-		-c:v libx264rgb -crf 0 TMPstep00.%TMP_EXT%
-		if errorlevel 1 exit /b
-		SET SCALESRC=TMPstep00.%TMP_EXT%
+	ffmpeg -hide_banner -y^
+	-i %2 ^
+	-filter_complex ^"^
+		[0] split [orig][2lag]; ^
+		[2lag] lagfun=%P_DECAY_FACTOR% [lag]; ^
+		[orig][lag] blend=all_mode='lighten':all_opacity=%P_DECAY_ALPHA%^" ^
+	-c:v libx264rgb -crf 0 TMPstep00.%TMP_EXT%
+	if errorlevel 1 exit /b
+	SET SCALESRC=TMPstep00.%TMP_EXT%
 )
 
-::++++++++++++++++++++++++++++++++++++++++++++++++++::
-:: Scale nearest neighbor, apply gamma & pixel blur ::
-::++++++++++++++++++++++++++++++++++++++++++++++++++::
+::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
+:: Scale nearest neighbor, go 16bit/channel, apply gamma & pixel blur ::
+::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
 
 ffmpeg -hide_banner -y^
 	-i %SCALESRC% ^
 	-vf ^"^
 		scale=%PX%:%PY%:flags=neighbor+%SWSFLAGS%,^
+		format=gbrp16le,^
 		lutrgb='r=gammaval(2.2):g=gammaval(2.2):b=gammaval(2.2)',^
 		gblur=sigma=%H_PX_BLUR%/100*%SX%:sigmaV=%VSIGMA%:steps=3^"^
-	%TMP_OUTPARAMS% TMPstep01.%TMP_EXT%
+	-c:v ffv1 -c:a copy TMPstep01.nut
 
 if errorlevel 1 exit /b
 
-::++++++++++++++++++++++++++++++++++++++++++++::
-:: Add halation, revert gamma + add curvature ::
-::++++++++++++++++++++++++++++++++++++++++++++::
+::+++++++++++++++++++++++++++++++++++++++++++++++++++++::
+:: Add halation, revert gamma/bit depth, add curvature ::
+::+++++++++++++++++++++++++++++++++++++++++++++++++++++::
 
 if /i "%HALATION_ON%"=="yes" (
 	ffmpeg -hide_banner -y^
-	-i TMPstep01.%TMP_EXT%^
+	-i TMPstep01.nut^
 	-filter_complex ^"^
 		[0]split[a][b],^
 		[a]gblur=sigma=%HALATION_RADIUS%:steps=3[h],^
 		[b][h]blend=all_mode='lighten':all_opacity=%HALATION_ALPHA%,^
-		lutrgb='r=gammaval^(0.454545^):g=gammaval^(0.454545^):b=gammaval^(0.454545^)'^
+		lutrgb='r=gammaval^(0.454545^):g=gammaval^(0.454545^):b=gammaval^(0.454545^)',^
+		format=rgb24 ^
 		%LENSC%^"^
 	%TMP_OUTPARAMS% TMPstep02.%TMP_EXT%
 ) else (
 	ffmpeg -hide_banner -y^
-	-i TMPstep01.%TMP_EXT%^
+	-i TMPstep01.nut^
 	-vf ^"^
-		lutrgb='r=gammaval^(0.454545^):g=gammaval^(0.454545^):b=gammaval^(0.454545^)'^
+		lutrgb='r=gammaval^(0.454545^):g=gammaval^(0.454545^):b=gammaval^(0.454545^)',^
+		format=rgb24 ^
 		%LENSC%^"^
 	%TMP_OUTPARAMS% TMPstep02.%TMP_EXT%
 )
