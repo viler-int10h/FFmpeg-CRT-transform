@@ -149,23 +149,24 @@ if /i "%SCANLINES_ON%"=="yes" (
 :: Tile shadowmask, add curvature ::
 ::********************************::
 
-ffmpeg -hide_banner -y -loop 1 -framerate 1 -t 100^
-	-i _%OVL_TYPE%.png^
-	-filter_complex ^"^
-		lutrgb='r=gammaval(2.2):g=gammaval(2.2):b=gammaval(2.2)',^
-		scale=round(iw*%OVL_SCALE%):round(ih*%OVL_SCALE%):flags=lanczos+%SWSFLAGS%,^
-		lutrgb='r=gammaval(0.454545):g=gammaval(0.454545):b=gammaval(0.454545)',^
-		tile=layout=100x1,^
-		crop=%PX%:in_h:0:0^"^
-	-frames:v 1 TMPshadowmaskR.png
+ffmpeg -hide_banner -y -i _%OVL_TYPE%.png -vf ^"^
+	lutrgb='r=gammaval(2.2):g=gammaval(2.2):b=gammaval(2.2)',^
+	scale=round(iw*%OVL_SCALE%):round(ih*%OVL_SCALE%):flags=lanczos+%SWSFLAGS%,^
+	lutrgb='r=gammaval(0.454545):g=gammaval(0.454545):b=gammaval(0.454545)'^" ^
+TMPshadowmask1x.png
 
-ffmpeg -hide_banner -y -loop 1 -framerate 1 -t 160^
-	-i TMPshadowmaskR.png^
-	-vf ^"^
-		tile=layout=1x160,^
-		crop=in_w:%PY% %LENSC_NO_MOIRE%^"^
-	-frames:v 1 TMPshadowmask.png
-if errorlevel 1 exit /b
+set OVL_X= & SET OVL_Y= & for /f %%i IN ('ffprobe -hide_banner -loglevel quiet -show_entries stream^=width^,height TMPshadowmask1x.png ^| find "="') do (
+	set w=%%i
+	if "!w:~0,6!"=="width=" SET OVL_X=!w:~6!
+	if "!w:~0,7!"=="height=" SET OVL_Y=!w:~7!
+)
+set /a "TILES_X=%PX%/%OVL_X%+1"
+set /a "TILES_Y=%PY%/%OVL_Y%+1"
+
+ffmpeg -hide_banner -y -loop 1 -i TMPshadowmask1x.png -vf ^"^
+	tile=layout=%TILES_X%x%TILES_Y%,^
+	crop=%PX%:%PY% %LENSC_NO_MOIRE%^" ^
+-frames:v 1 TMPshadowmask.png
 
 
 ::+++++++++++++++++++++++++++++::
