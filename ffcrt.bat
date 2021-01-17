@@ -168,6 +168,7 @@ ffmpeg -hide_banner -y -loop 1 -i TMPshadowmask1x.png -vf ^"^
 	crop=%PX%:%PY% %LENSC_NO_MOIRE%^" ^
 -frames:v 1 TMPshadowmask.png
 
+if errorlevel 1 exit /b
 
 ::+++++++++++++++++++++++++++++::
 :: Phosphor decay - video only ::
