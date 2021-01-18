@@ -52,7 +52,7 @@ echo. & echo Couldn't get valid width/height for input file "%2"^^^! & exit /b
 :: Count frames - is it an image or a video? ::
 ::+++++++++++++++++++++++++++++++++++++++++++::
 
-for /f "usebackq tokens=2 delims== " %%i in (`ffmpeg -i %2 -map 0:v:0 -c copy -f null - 2^>^&1 ^| find "frame="`) do SET NUM_FRAMES=%%i
+for /f "usebackq tokens=2 delims== " %%i in (`ffmpeg -loglevel 40 -i %2 -map 0:v:0 -c copy -f null - 2^>^&1 ^| find "frame="`) do SET NUM_FRAMES=%%i
 if errorlevel 1 (echo Couldn't get frame count for input file "%2"^^^! & exit /b)
 if "%NUM_FRAMES%" == "1" (
 	set TMP_EXT=png
@@ -62,8 +62,8 @@ if "%NUM_FRAMES%" == "1" (
 	set TMP_EXT=avi
 	set TMP_OUTPARAMS=-c:a copy -c:v libx264rgb -crf 0
 	set FIN_OUTPARAMS=-c:a copy -c:v libx264rgb -crf 8
+	set IS_VIDEO=1
 )
-
 
 ::++++++++++::
 :: Settings ::
@@ -175,7 +175,7 @@ if errorlevel 1 exit /b
 ::+++++++++++++++++++++++++++++::
 
 SET SCALESRC=%2
-if "%IS_VIDEO%" == "1" if %P_DECAY_FACTOR% gtr 0 (
+if defined IS_VIDEO if %P_DECAY_FACTOR% gtr 0 (
 	ffmpeg -hide_banner -y^
 	-i %2 ^
 	-filter_complex ^"^
