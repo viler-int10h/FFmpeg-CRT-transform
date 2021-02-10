@@ -74,12 +74,12 @@ if not exist _%OVL_TYPE%.png (echo File not found: _%OVL_TYPE%.png & exit /b)
 
 :: Set some shorthand vars and calculate stuff:
 
-set /a "PX=IX*SX"
-set /a "PY=IY*SY"
+set /a "PX=%IX%*%PRESCALE_BY%*%PX_ASPECT%"
+set /a "PY=%IY%*%PRESCALE_BY%"
 set OX=round(%OY%*%OASPECT%)
 set SWSFLAGS=accurate_rnd+full_chroma_int+full_chroma_inp
 if /i "%VIGNETTE_ON%"=="yes" (SET VIGNETTE_STR=vignette=PI*%VIGNETTE_POWER%, ) else (SET VIGNETTE_STR=)
-if /i "%V_PX_BLUR%"=="0" (SET VSIGMA=0.1) else (SET VSIGMA=%V_PX_BLUR%/100*%SY%)
+if /i "%V_PX_BLUR%"=="0" (SET VSIGMA=0.1) else (SET VSIGMA=%V_PX_BLUR%/100*%PRESCALE_BY%)
 
 : Curvature factors
 
@@ -164,7 +164,7 @@ if "%CORNER_RADIUS%"=="0" (
 		[bg][tl] overlay=0:0:format=rgb [p1];^
 		[p1][tr] overlay=%PX%-%CORNER_RADIUS%:0:format=rgb [p2];^
 		[p2][br] overlay=%PX%-%CORNER_RADIUS%:%PY%-%CORNER_RADIUS%:format=rgb [p3];^
-		[p3][bl] overlay=x=0:y=%PY%-%CORNER_RADIUS%:format=rgb %BZLENSC%, negate [alpha];^
+		[p3][bl] overlay=x=0:y=%PY%-%CORNER_RADIUS%:format=rgb %BZLENSC%, negate, eq=1.2 [alpha];^
 		[black][alpha] alphamerge^" ^
 	-frames:v 1 TMPbezel.png
 )
@@ -179,8 +179,8 @@ if /i "%SCANLINES_ON%"=="yes" (
 	-i nullsrc=s=1x100^
 	-vf ^"^
 		format=gray,^
-		geq=lum='if^(lt^(Y,%SY%/%SCAN_FACTOR%^), pow^(sin^(Y*PI/^(%SY%/%SCAN_FACTOR%^)^), 1/%SL_WEIGHT%^)*255, 0^)',^
-		crop=1:%SY%/%SCAN_FACTOR%:0:0,^
+		geq=lum='if^(lt^(Y,%PRESCALE_BY%/%SCAN_FACTOR%^), pow^(sin^(Y*PI/^(%PRESCALE_BY%/%SCAN_FACTOR%^)^), 1/%SL_WEIGHT%^)*255, 0^)',^
+		crop=1:%PRESCALE_BY%/%SCAN_FACTOR%:0:0,^
 		scale=%PX%:ih:flags=neighbor^"^
 	-frames:v 1 TMPscanline.png
 
@@ -207,8 +207,7 @@ IF %OVL_ALPHA% gtr 0 goto :DO_MASK
 
 	ffmpeg -hide_banner -y -i _%OVL_TYPE%.png -vf ^"^
 		lutrgb='r=gammaval(2.2):g=gammaval(2.2):b=gammaval(2.2)',^
-		scale=round(iw*%OVL_SCALE%):round(ih*%OVL_SCALE%):flags=lanczos+%SWSFLAGS%,^
-		lutrgb='r=gammaval(0.454545):g=gammaval(0.454545):b=gammaval(0.454545)'^" ^
+		scale=round(iw*%OVL_SCALE%):round(ih*%OVL_SCALE%):flags=lanczos+%SWSFLAGS%^" ^
 	TMPshadowmask1x.png
 	
 	set OVL_X= & SET OVL_Y= & for /f %%i IN ('ffprobe -hide_banner -loglevel quiet -show_entries stream^=width^,height TMPshadowmask1x.png ^| find "="') do (
@@ -221,7 +220,8 @@ IF %OVL_ALPHA% gtr 0 goto :DO_MASK
 	
 	ffmpeg -hide_banner -y -loop 1 -i TMPshadowmask1x.png -vf ^"^
 		tile=layout=%TILES_X%x%TILES_Y%,^
-		crop=%PX%:%PY% %LENSC%^" ^
+		crop=%PX%:%PY% %LENSC%,^
+		lutrgb='r=gammaval(0.454545):g=gammaval(0.454545):b=gammaval(0.454545)'^" ^
 	-frames:v 1 TMPshadowmask.png
 	if errorlevel 1 exit /b
 	goto :OVL_DONE
@@ -287,10 +287,13 @@ if defined PREPROCESS (
 :: Scale nearest neighbor, go 16bit/channel, apply gamma & pixel blur ::
 ::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
 
-ffmpeg -hide_banner -y -i %SCALESRC% -vf ^"scale=%PX%:%PY%:flags=neighbor+%SWSFLAGS%,^
+ffmpeg -hide_banner -y -i %SCALESRC% -vf ^"^
+	scale=iw*%PRESCALE_BY%:ih:flags=neighbor,^
 	format=gbrp16le,^
 	lutrgb='r=gammaval(2.2):g=gammaval(2.2):b=gammaval(2.2)',^
-	gblur=sigma=%H_PX_BLUR%/100*%SX%:sigmaV=%VSIGMA%:steps=3^" ^
+	scale=iw*%PX_ASPECT%:ih:flags=fast_bilinear,^
+	scale=iw:ih*%PRESCALE_BY%:flags=neighbor,^
+	gblur=sigma=%H_PX_BLUR%/100*%PRESCALE_BY%*%PX_ASPECT%:sigmaV=%VSIGMA%:steps=3^" ^
 -c:v ffv1 -c:a copy TMPstep01.nut
 
 if errorlevel 1 exit /b
@@ -320,8 +323,6 @@ if /i "%HALATION_ON%"=="yes" (
 	%TMP_OUTPARAMS% TMPstep02.%TMP_EXT%
 )
 if errorlevel 1 exit /b
-
-:: try after: change zscale to format=rgb24...
 
 ::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
 :: Add bloom, scanlines, shadowmask, rounded corners + brightness fix ::
