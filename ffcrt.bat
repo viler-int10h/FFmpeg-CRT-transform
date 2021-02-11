@@ -81,11 +81,11 @@ set SWSFLAGS=accurate_rnd+full_chroma_int+full_chroma_inp
 if /i "%VIGNETTE_ON%"=="yes" (SET VIGNETTE_STR=vignette=PI*%VIGNETTE_POWER%, ) else (SET VIGNETTE_STR=)
 if /i "%V_PX_BLUR%"=="0" (SET VSIGMA=0.1) else (SET VSIGMA=%V_PX_BLUR%/100*%PRESCALE_BY%)
 
-: Curvature factors
+:: Curvature factors
 
 if %BEZEL_CURVATURE% lss %CRT_CURVATURE% (set BEZEL_CURVATURE=%CRT_CURVATURE%)
-if "%CRT_CURVATURE%" neq "0" (SET LENSC=, lenscorrection=k1=%CRT_CURVATURE%:k2=%CRT_CURVATURE%:i=bilinear)
-if "%BEZEL_CURVATURE%" neq "0" (SET BZLENSC=, lenscorrection=k1=%BEZEL_CURVATURE%:k2=%BEZEL_CURVATURE%:i=bilinear)
+if "%CRT_CURVATURE%" neq "0" (SET LENSC=, pad=iw+8:ih+8:4:4:black, lenscorrection=k1=%CRT_CURVATURE%:k2=%CRT_CURVATURE%:i=bilinear, crop=iw-8:ih-8)
+if "%BEZEL_CURVATURE%" neq "0" (SET BZLENSC=, scale=iw*2:ih*2:flags=gauss, pad=iw+8:ih+8:4:4:black, lenscorrection=k1=%BEZEL_CURVATURE%:k2=%BEZEL_CURVATURE%:i=bilinear, crop=iw-8:ih-8, scale=iw/2:ih/2:flags=gauss)
 
 :: Scan factor
 
@@ -187,8 +187,10 @@ if /i "%SCANLINES_ON%"=="yes" (
 	ffmpeg -hide_banner -y -loop 1 -framerate 1 -t %SL_COUNT% ^
 	-i TMPscanline.png^
 	-vf ^"^
-		format=rgb24,^
-		tile=layout=1x%SL_COUNT% %LENSC%^"^
+		format=gray16le,^
+		tile=layout=1x%SL_COUNT%,^
+		scale=iw*3:ih*3:flags=gauss %LENSC%, scale=iw/3:ih/3:flags=gauss,^
+		format=gray16le, format=rgb24^"^
 	-frames:v 1 TMPscanlines.png
 	if errorlevel 1 exit /b
 )
@@ -220,7 +222,9 @@ IF %OVL_ALPHA% gtr 0 goto :DO_MASK
 	
 	ffmpeg -hide_banner -y -loop 1 -i TMPshadowmask1x.png -vf ^"^
 		tile=layout=%TILES_X%x%TILES_Y%,^
-		crop=%PX%:%PY% %LENSC%,^
+		crop=%PX%:%PY%,^
+		scale=iw*2:ih*2:flags=gauss %LENSC%,^
+		scale=iw/2:ih/2:flags=bicubic,^
 		lutrgb='r=gammaval(0.454545):g=gammaval(0.454545):b=gammaval(0.454545)'^" ^
 	-frames:v 1 TMPshadowmask.png
 	if errorlevel 1 exit /b
