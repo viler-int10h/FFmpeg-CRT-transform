@@ -33,26 +33,23 @@ if [%1] neq [] if [%2] neq [] goto :ARGS_OK
 	echo. & echo Output filename must have an extension: %OUTFILE% & exit /b
 :FILES_OK
 
-::+++++++++++++++++++++++::
-:: Find input dimensions ::
-::+++++++++++++++++++++++::
+::++++++++++++++++++++++++++++++++++++++++++++++::
+:: Find input dimensions and type (image/video) ::
+::++++++++++++++++++++++++++++++++++++++++++++++::
 
-set IX= & SET IY= & for /f %%i IN ('ffprobe -hide_banner -loglevel quiet -show_entries stream^=width^,height %2 ^| find "="') do (
+set IX= & SET IY= & SET FC= 
+for /f %%i IN ('ffprobe -hide_banner -loglevel quiet -show_entries stream^=width^,height^,nb_frames %2 ^| find "="') do (
 	set x=%%i
 	if "!x:~0,6!"=="width=" SET IX=!x:~6!
 	if "!x:~0,7!"=="height=" SET IY=!x:~7!
+	if "!x:~0,10!"=="nb_frames=" SET FC=!x:~10!
 )
-if "%IX%" neq " " if "%IY%" neq " " goto :ALL_OK
-echo. & echo Couldn't get valid width/height for input file "%2"^^^! & exit /b
+if "%IX%" neq " " if "%IY%" neq " " if "%FC%" neq " " goto :ALL_OK
+echo. & echo Couldn't get media info for input file "%2" (invalid image/video?) & exit /b
+
 :ALL_OK
 
-::+++++++++++++++++++++++++++++++++++++++++++::
-:: Count frames - is it an image or a video? ::
-::+++++++++++++++++++++++++++++++++++++++++++::
-
-for /f "usebackq tokens=2 delims== " %%i in (`ffmpeg -loglevel 40 -i %2 -map 0:v:0 -c copy -f null - 2^>^&1 ^| find "frame="`) do SET NUM_FRAMES=%%i
-if errorlevel 1 (echo Couldn't get frame count for input file "%2"^^^! & exit /b)
-if "%NUM_FRAMES%" == "1" (
+if "%FC%" == "N/A" (
 	set TMP_EXT=png
 	set TMP_OUTPARAMS= 
 	set FIN_OUTPARAMS= 
