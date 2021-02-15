@@ -4,7 +4,7 @@ Windows batch script for a configurable simulation of CRT monitors, given an inp
 Requires a build of FFmpeg from **2021-01-27** or newer, due to a couple of bugfixes and new features.
 
 Usage: ```ffcrt <config_file> <input_file> [output_file]```  
-- ```input_file``` must be a valid image or video.  If ```output_file``` is omitted, the output will be named "(input_file)_OUT.(input_ext)".
+- ```input_file``` must be a valid image or video.  If ```output_file``` is omitted, the output will be named "(input_file)_(config_file).(input_ext)".
 - See the "presets" subdir for sample configuration files (comments for each setting included). **NOTE**: the included presets aren't guaranteed to accurately simulate any particular monitor model, but they may give you a good starting point!
 
 Write-ups, instructions, sample images:

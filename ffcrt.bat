@@ -13,14 +13,14 @@ if [%1] neq [] if [%2] neq [] goto :ARGS_OK
   echo. & echo FFmpeg CRT transform script / VileR 2021
 	echo. & echo USAGE:  %~n0 ^<config_file^> ^<input_file^> [output_file] & echo.
 	echo    input_file must be a valid image or video.  If output_file is omitted, the
-	echo    output will be named "(input_file)_OUT.(input_ext)"
+	echo    output will be named "(input_file)_(config_file).(input_ext)"
 	exit /b
 :ARGS_OK
 	if [%3] neq [] (
 		set OUTFILE=%~f3
 		set OUTEXT=%~x3
 	) else (
-		set OUTFILE=%~d2%~p2%~n2_OUT%~x2
+		set OUTFILE=%~d2%~p2%~n2_%~n1%~x2
 		set OUTEXT=%~x2
 	)
 	if exist %1 goto :FILE1_OK
@@ -398,7 +398,7 @@ if errorlevel 1 exit /b
 :: Clean up ::
 ::++++++++++::
 
-del TMP*
+del TMPbezel.png;TMPscanline?.png;TMPshadow*.png;TMPpaper.png;TMPstep0?.*;TMPbloom.*;TMPcrop
 @echo. & echo ------------------------
 @echo Output file: %OUTFILE%
 @echo Started:     %FFSTART%
