@@ -38,7 +38,7 @@ if [%1] neq [] if [%2] neq [] goto :ARGS_OK
 ::++++++++++++++++++++++++++++++++++++++++++++++::
 
 set IX= & SET IY= & SET FC= 
-for /f %%i IN ('ffprobe -hide_banner -loglevel quiet -show_entries stream^=width^,height^,nb_frames %2 ^| find "="') do (
+for /f %%i IN ('ffprobe -hide_banner -loglevel quiet -select_streams v:0 -show_entries stream^=width^,height^,nb_frames %2 ^| find "="') do (
 	set x=%%i
 	if "!x:~0,6!"=="width=" SET IX=!x:~6!
 	if "!x:~0,7!"=="height=" SET IY=!x:~7!
@@ -138,18 +138,23 @@ if /i "%MONITOR_COLOR%"=="p7" (
 
 
 @SET FFSTART=%time%
+if "%FC%" neq "N/A" (
+	echo. &echo Input frame count: %FC%
+	echo ---------------------------
+)
 
 ::+++++++++++++++++++++++++++++++++++++++++++++++++::
 :: Create bezel with rounded corners and curvature ::
 ::+++++++++++++++++++++++++++++++++++++++++++++++++::
 
+echo Bezel:
 if "%CORNER_RADIUS%"=="0" (
-	ffmpeg -hide_banner -y^
+	ffmpeg -hide_banner -loglevel error -stats -y^
 	-f lavfi -i "color=c=#ffffff:s=%PX%x%PY%, format=rgb24 %BZLENSC%"^
 	-filter_complex "[0]negate[alpha]; color=c=black:s=%PX%x%PY%[black]; [black][alpha] alphamerge" ^
 	-frames:v 1 TMPbezel.png
 ) else (
-	ffmpeg -hide_banner -y^
+	ffmpeg -hide_banner -loglevel error -stats -y^
 	-f lavfi -i "color=s=1024x1024, format=gray, geq='lum=if(lte((X-W)^2+(Y-H)^2, 1024*1024), 255, 0)', scale=%CORNER_RADIUS%:%CORNER_RADIUS%:flags=lanczos"^
 	-filter_complex ^"^
 		color=c=black:s=%PX%x%PY%[black];^
@@ -172,7 +177,8 @@ if errorlevel 1 exit /b
 ::+++++++++++++++++++++++++++++++++::
 
 if /i "%SCANLINES_ON%"=="yes" (
-	ffmpeg -hide_banner -y -f lavfi ^
+	echo. & echo Scanlines:
+	ffmpeg -hide_banner -loglevel error -stats -y -f lavfi ^
 	-i nullsrc=s=1x100^
 	-vf ^"^
 		format=gray,^
@@ -181,7 +187,7 @@ if /i "%SCANLINES_ON%"=="yes" (
 		scale=%PX%:ih:flags=neighbor^"^
 	-frames:v 1 TMPscanline.png
 
-	ffmpeg -hide_banner -y -loop 1 -framerate 1 -t %SL_COUNT% ^
+	ffmpeg -hide_banner -loglevel error -stats -y -loop 1 -framerate 1 -t %SL_COUNT% ^
 	-i TMPscanline.png^
 	-vf ^"^
 		format=gray16le,^
@@ -196,15 +202,16 @@ if /i "%SCANLINES_ON%"=="yes" (
 :: Tile shadowmask/overlay, add curvature ::
 ::****************************************::
 
+echo. & echo Shadowmask overlay:
 IF %OVL_ALPHA% gtr 0 goto :DO_MASK
 
 	:: (if shadowmask alpha is 0, just make a blank canvas)
-	ffmpeg -hide_banner -y -f lavfi -i "color=c=#00000000:s=%PX%x%PY%,format=rgba" -frames:v 1 TMPshadowmask.png
+	ffmpeg -hide_banner -loglevel error -stats -y -f lavfi -i "color=c=#00000000:s=%PX%x%PY%,format=rgba" -frames:v 1 TMPshadowmask.png
 	goto :MASK_DONE
 
 :DO_MASK
 
-	ffmpeg -hide_banner -y -i _%OVL_TYPE%.png -vf ^"^
+	ffmpeg -hide_banner -loglevel error -stats -y -i _%OVL_TYPE%.png -vf ^"^
 		lutrgb='r=gammaval(2.2):g=gammaval(2.2):b=gammaval(2.2)',^
 		scale=round(iw*%OVL_SCALE%):round(ih*%OVL_SCALE%):flags=lanczos+%SWSFLAGS%^" ^
 	TMPshadowmask1x.png
@@ -217,7 +224,7 @@ IF %OVL_ALPHA% gtr 0 goto :DO_MASK
 	set /a "TILES_X=%PX%/%OVL_X%+1"
 	set /a "TILES_Y=%PY%/%OVL_Y%+1"
 	
-	ffmpeg -hide_banner -y -loop 1 -i TMPshadowmask1x.png -vf ^"^
+	ffmpeg -hide_banner -loglevel error -stats -y -loop 1 -i TMPshadowmask1x.png -vf ^"^
 		tile=layout=%TILES_X%x%TILES_Y%,^
 		crop=%PX%:%PY%,^
 		scale=iw*2:ih*2:flags=gauss %LENSC%,^
@@ -235,6 +242,7 @@ if not defined PAPER_OVL goto :OVL_DONE
 	set /a "PAPERX=%OY%*%OASPECT%*67/100"
 	set /a "PAPERY=%OY%*67/100"
 	
+	echo. & echo Texture overlay:
 	ffmpeg -y -hide_banner -f lavfi -i "color=c=#808080:s=%PAPERX%x%PAPERY%" ^
 	-filter_complex ^"^
 		noise=all_seed=5150:all_strength=100:all_flags=u, format=gray, ^
@@ -279,7 +287,8 @@ if defined IS_VIDEO if %P_DECAY_FACTOR% gtr 0 if /i "%MONITOR_COLOR%" neq "p7" (
 )
 
 if defined PREPROCESS (
-	ffmpeg -hide_banner -y -i %2 -filter_complex ^"%VF_PRE%^" %TMP_OUTPARAMS% TMPstep00.%TMP_EXT%
+	echo. & echo Step00 ^(preprocess^):
+	ffmpeg -hide_banner -loglevel error -stats -y -i %2 -filter_complex ^"%VF_PRE%^" %TMP_OUTPARAMS% TMPstep00.%TMP_EXT%
 	if errorlevel 1 exit /b
 	SET SCALESRC=TMPstep00.%TMP_EXT%
 )
@@ -288,7 +297,8 @@ if defined PREPROCESS (
 :: Scale nearest neighbor, go 16bit/channel, apply gamma & pixel blur ::
 ::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
 
-ffmpeg -hide_banner -y -i %SCALESRC% -vf ^"^
+echo. & echo Step01:
+ffmpeg -hide_banner -loglevel error -stats -y -i %SCALESRC% -vf ^"^
 	scale=iw*%PRESCALE_BY%:ih:flags=neighbor,^
 	format=gbrp16le,^
 	lutrgb='r=gammaval(2.2):g=gammaval(2.2):b=gammaval(2.2)',^
@@ -305,8 +315,9 @@ if errorlevel 1 exit /b
 
 :: (Real halation should come after scanlines & before shadowmask, but that turned out ugly)
 
+echo. & echo Step02:
 if /i "%HALATION_ON%"=="yes" (
-	ffmpeg -hide_banner -y -i TMPstep01.nut -filter_complex ^"^
+	ffmpeg -hide_banner -loglevel error -stats -y -i TMPstep01.nut -filter_complex ^"^
 		[0]split[a][b],^
 		[a]gblur=sigma=%HALATION_RADIUS%:steps=6[h],^
 		[b][h]blend=all_mode='lighten':all_opacity=%HALATION_ALPHA%,^
@@ -316,7 +327,7 @@ if /i "%HALATION_ON%"=="yes" (
 		%LENSC%^"^
 	%TMP_OUTPARAMS% TMPstep02.%TMP_EXT%
 ) else (
-	ffmpeg -hide_banner -y -i TMPstep01.nut -vf ^"^
+	ffmpeg -hide_banner -loglevel error -stats -y -i TMPstep01.nut -vf ^"^
 		lutrgb='r=gammaval^(0.454545^):g=gammaval^(0.454545^):b=gammaval^(0.454545^)',^
 		lutrgb='r=val+^(%BLACKPOINT%*256*^(maxval-val^)/maxval^):g=val+^(%BLACKPOINT%*256*^(maxval-val^)/maxval^):b=val+^(%BLACKPOINT%*256*^(maxval-val^)/maxval^)',^
 		format=rgb24^
@@ -334,14 +345,16 @@ if /i "%SCANLINES_ON%"=="yes" (
 	SET SL_INPUT=TMPscanlines.png
 	if /i "%BLOOM_ON%"=="yes" (
 		SET SL_INPUT=TMPbloom.%TMP_EXT%
-		ffmpeg -hide_banner -y^
+		echo. & echo Step02-bloom:
+		ffmpeg -hide_banner -loglevel error -stats -y^
 		-i TMPscanlines.png -i TMPstep02.%TMP_EXT% -filter_complex ^"^
 			[1]lutrgb='r=gammaval^(2.2^):g=gammaval^(2.2^):b=gammaval^(2.2^)', hue=s=0, lutrgb='r=gammaval^(0.454545^):g=gammaval^(0.454545^):b=gammaval^(0.454545^)'[g],^
 			[g][0]blend=all_expr='if^(gte^(A,128^), ^(B+^(255-B^)*%BLOOM_POWER%*^(A-128^)/128^), B^)',^
 			setsar=sar=1/1^"^
 		%TMP_OUTPARAMS% !SL_INPUT!
 	)
-	ffmpeg -hide_banner -y^
+	echo. & echo Step03:
+	ffmpeg -hide_banner -loglevel error -stats -y^
 	-i TMPstep02.%TMP_EXT% -i !SL_INPUT! -i TMPshadowmask.png -i TMPbezel.png -filter_complex ^"^
 		[0][1]blend=all_mode='multiply':all_opacity=%SL_ALPHA%[a],^
 		[a][2]blend=all_mode='multiply':all_opacity=%OVL_ALPHA%[b],^
@@ -351,7 +364,8 @@ if /i "%SCANLINES_ON%"=="yes" (
 
 ) else (
 
-	ffmpeg -hide_banner -y^
+	echo. & echo Step03:
+	ffmpeg -hide_banner -loglevel error -stats -y^
 	-i TMPstep02.%TMP_EXT% -i TMPshadowmask.png -i TMPbezel.png -filter_complex ^"^
 		[0][1]blend=all_mode='multiply':all_opacity=%OVL_ALPHA%[b],^
 		[b][2]overlay=0:0:format=gbrp,^
@@ -377,7 +391,8 @@ for %%a IN (%CROPTEMP%) do set CROP_STR=%%a
 
 if defined PAPER_OVL (set PAPER_STR=[nop];movie=TMPpaper.png[paper];[nop][paper]blend=all_mode='multiply':eof_action='repeat')
 
-ffmpeg -hide_banner -y -i TMPstep03.%TMP_EXT% -filter_complex ^"^
+echo. & echo Output:
+ffmpeg -hide_banner -loglevel error -stats -y -i TMPstep03.%TMP_EXT% -filter_complex ^"^
 	crop=%CROP_STR%,^
 	format=gbrp16le,^
 	lutrgb='r=gammaval(2.2):g=gammaval(2.2):b=gammaval(2.2)',^
