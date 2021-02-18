@@ -273,7 +273,12 @@ if /i "%INVERT_INPUT%" == "yes" (SET PREPROCESS=1 & SET VF_PRE=negate)
 
 if defined IS_VIDEO if %LATENCY% gtr 0 if /i "%MONITOR_COLOR%" neq "p7" (
 	SET PREPROCESS=1
-	if defined VF_PRE (SET VF_PRE=tmix=%LATENCY%, !VF_PRE!) else (SET VF_PRE=tmix=%LATENCY%)
+	if defined VF_PRE (SET VF_PRE=, !VF_PRE!)
+	SET VF_PRE=^
+		split [o][2lat]; ^
+		[2lat] tmix=%LATENCY%, setpts=PTS+^(^(%LATENCY%/2^^^^^^^)/FR^^^^^^^)/TB [lat]; ^
+		[lat][o] blend=all_opacity=%LATENCY_ALPHA% ^
+		!VF_PRE!
 )
 
 if defined IS_VIDEO if %P_DECAY_FACTOR% gtr 0 if /i "%MONITOR_COLOR%" neq "p7" (
