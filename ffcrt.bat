@@ -136,6 +136,10 @@ if /i "%MONITOR_COLOR%"=="p7" (
 	)
 )
 
+:: Can skip some stuff where not needed
+
+for /f "tokens=1,2 delims=." %%a in ("%OVL_ALPHA%") do (if %%a equ 0 if %%b equ 0 set SKIP_OVL=1)
+for /f "tokens=1,2 delims=." %%a in ("%BRIGHTEN%")  do (if %%a equ 1 if %%b equ 0 set SKIP_BRI=1)
 
 @SET FFSTART=%time%
 if "%FC%" neq "N/A" (
@@ -345,6 +349,12 @@ if errorlevel 1 exit /b
 :: Add bloom, scanlines, shadowmask, rounded corners + brightness fix ::
 ::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
 
+:: Can be skipped if none of the above are needed:
+if /i "%SCANLINES_ON%"=="no" if "%BEZEL_CURVATURE%"=="%CRT_CURVATURE%" if %CORNER_RADIUS% equ 0 if defined SKIP_OVL if defined SKIP_BRI (
+	ren TMPstep02.%TMP_EXT% TMPstep03.%TMP_EXT%
+	goto :STEP03_DONE
+)
+
 if /i "%SCANLINES_ON%"=="yes" (
 
 	SET SL_INPUT=TMPscanlines.png
@@ -379,6 +389,7 @@ if /i "%SCANLINES_ON%"=="yes" (
 )
 
 if errorlevel 1 exit /b
+:STEP03_DONE
 
 ::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
 :: Detect crop area; crop, rescale, monochrome (if set), vignette, pad, set sar/dar ::
