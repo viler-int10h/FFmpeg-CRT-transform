@@ -49,6 +49,8 @@ echo. & echo Couldn't get media info for input file "%2" (invalid image/video?) 
 
 :ALL_OK
 
+:: matroska doesn't return nb_frames; assume video
+if /i "%~x2" == ".mkv" set FC=unknown
 if "%FC%" == "N/A" (
 	set TMP_EXT=png
 	set TMP_OUTPARAMS= 
@@ -314,7 +316,7 @@ ffmpeg -hide_banner -loglevel error -stats -y -i %SCALESRC% -vf ^"^
 	scale=iw*%PX_ASPECT%:ih:flags=fast_bilinear,^
 	scale=iw:ih*%PRESCALE_BY%:flags=neighbor,^
 	gblur=sigma=%H_PX_BLUR%/100*%PRESCALE_BY%*%PX_ASPECT%:sigmaV=%VSIGMA%:steps=3^" ^
--c:v ffv1 -c:a copy TMPstep01.nut
+-c:v ffv1 -c:a copy TMPstep01.mkv
 
 if errorlevel 1 exit /b
 
@@ -326,7 +328,7 @@ if errorlevel 1 exit /b
 
 echo. & echo Step02:
 if /i "%HALATION_ON%"=="yes" (
-	ffmpeg -hide_banner -loglevel error -stats -y -i TMPstep01.nut -filter_complex ^"^
+	ffmpeg -hide_banner -loglevel error -stats -y -i TMPstep01.mkv -filter_complex ^"^
 		[0]split[a][b],^
 		[a]gblur=sigma=%HALATION_RADIUS%:steps=6[h],^
 		[b][h]blend=all_mode='lighten':all_opacity=%HALATION_ALPHA%,^
@@ -336,7 +338,7 @@ if /i "%HALATION_ON%"=="yes" (
 		%LENSC%^"^
 	%TMP_OUTPARAMS% TMPstep02.%TMP_EXT%
 ) else (
-	ffmpeg -hide_banner -loglevel error -stats -y -i TMPstep01.nut -vf ^"^
+	ffmpeg -hide_banner -loglevel error -stats -y -i TMPstep01.mkv -vf ^"^
 		lutrgb='r=gammaval^(0.454545^):g=gammaval^(0.454545^):b=gammaval^(0.454545^)',^
 		lutrgb='r=val+^(%BLACKPOINT%*256*^(maxval-val^)/maxval^):g=val+^(%BLACKPOINT%*256*^(maxval-val^)/maxval^):b=val+^(%BLACKPOINT%*256*^(maxval-val^)/maxval^)',^
 		format=rgb24^
