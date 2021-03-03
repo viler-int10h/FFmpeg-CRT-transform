@@ -73,12 +73,18 @@ if not exist _%OVL_TYPE%.png (echo File not found: _%OVL_TYPE%.png & exit /b)
 
 :: Set some shorthand vars and calculate stuff:
 
+set /a "SXINT=%IX%*%PRESCALE_BY%"
 set /a "PX=%IX%*%PRESCALE_BY%*%PX_ASPECT%"
 set /a "PY=%IY%*%PRESCALE_BY%"
 set OX=round(%OY%*%OASPECT%)
 set SWSFLAGS=accurate_rnd+full_chroma_int+full_chroma_inp
 if /i "%VIGNETTE_ON%"=="yes" (SET VIGNETTE_STR=vignette=PI*%VIGNETTE_POWER%, ) else (SET VIGNETTE_STR=)
 if /i "%V_PX_BLUR%"=="0" (SET VSIGMA=0.1) else (SET VSIGMA=%V_PX_BLUR%/100*%PRESCALE_BY%)
+if /i "%FLAT_PANEL%"=="yes" (
+	set SCANLINES_ON=no
+	set CRT_CURVATURE=0
+	set OVL_ALPHA=0
+)
 
 :: Curvature factors
 
@@ -101,15 +107,26 @@ if /i "%SCAN_FACTOR%"=="half" (
 	)
 )
 
-:: Handle monochrome settings
-:: 'p7' is a special case (decay/latency are processed differently and require a couple more curve maps)
+:: Handle monochrome settings; special cases: 'p7' (decay/latency are processed differently and require a couple more curve maps),
+:: 'paperwhite' (uses a texture overlay), 'lcd*' (optional texture overlay + if FLAT_PANEL then pixel grid is inverted too)
 
 if /i "%MONITOR_COLOR%"=="white"      (set MONOCURVES= )
-if /i "%MONITOR_COLOR%"=="paperwhite" (set MONOCURVES= & set PAPER_OVL=1)
+if /i "%MONITOR_COLOR%"=="paperwhite" (set MONOCURVES= & set TEXTURE_OVL=paper)
 if /i "%MONITOR_COLOR%"=="green1"     (set MONOCURVES=curves=r='0/0 .77/0 1/.45':g='0/0 .77/1 1/1':b='0/0 .77/.17 1/.73',)
 if /i "%MONITOR_COLOR%"=="green2"     (set MONOCURVES=curves=r='0/0 .43/.16 .72/.30 1/.56':g='0/0 .51/.53 .82/1 1/1':b='0/0 .43/.16 .72/.30 1/.56',)
 if /i "%MONITOR_COLOR%"=="bw-tv"      (set MONOCURVES=curves=r='0/0 .5/.49 1/1':g='0/0 .5/.49 1/1':b='0/0 .5/.62 1/1',)
 if /i "%MONITOR_COLOR%"=="amber"      (set MONOCURVES=curves=r='0/0 .25/.45 .8/1 1/1':g='0/0 .25/.14 .8/.55 1/.8':b='0/0 .8/0 1/.29',)
+if /i "%MONITOR_COLOR%"=="plasma"     (set MONOCURVES=curves=r='0/0 .13/.27 .52/.83 .8/1 1/1':g='0/0 .13/0 .52/.14 .8/.35 1/.54':b='0/0 1/0',)
+if /i "%MONITOR_COLOR%"=="eld"        (set MONOCURVES=curves=r='0/0 .46/.49 1/1':g='0/0 .46/.37 1/.94':b='0/0 .46/0 1/.29',)
+if /i "%MONITOR_COLOR%"=="lcd"        (set MONOCURVES=curves=r='0/.09 1/.48':g='0/.11 1/.56':b='0/.20 1/.35', & set PXGRID_INVERT=1)
+::if /i "%MONITOR_COLOR%"=="lcd-lite"   (set MONOCURVES=curves=r='0/.06 1/.69':g='0/.15 1/.82':b='0/.39 1/.55', & set PXGRID_INVERT=1)
+if /i "%MONITOR_COLOR%"=="lcd-lite"   (set MONOCURVES=curves=r='0/.06 1/.64':g='0/.15 1/.77':b='0/.35 1/.65', & set PXGRID_INVERT=1)
+if /i "%MONITOR_COLOR%"=="lcd-lwhite" (set MONOCURVES=curves=r='0/.09 1/.82':g='0/.18 1/.89':b='0/.29 1/.93', & set PXGRID_INVERT=1)
+if /i "%MONITOR_COLOR%"=="lcd-lblue"  (set MONOCURVES=curves=r='0/.00 1/.62':g='0/.22 1/.75':b='0/.73 1/.68', & set PXGRID_INVERT=1)
+
+:: allow lcd grain only for the appropriate monitor types 
+if /i "!MONITOR_COLOR:~0,3!"=="lcd" if %LCD_GRAIN% gtr 0 set TEXTURE_OVL=lcdgrain
+
 SET "MONO_STR1= " & SET "MONO_STR2= "
 if /i "%MONITOR_COLOR%" neq "rgb" (
 	set OVL_ALPHA=0
@@ -204,9 +221,9 @@ if /i "%SCANLINES_ON%"=="yes" (
 	if errorlevel 1 exit /b
 )
 
-::****************************************::
-:: Tile shadowmask/overlay, add curvature ::
-::****************************************::
+::**************************************************::
+:: Create shadowmask/texture overlay, add curvature ::
+::**************************************************::
 
 echo. & echo Shadowmask overlay:
 IF %OVL_ALPHA% gtr 0 goto :DO_MASK
@@ -242,14 +259,31 @@ IF %OVL_ALPHA% gtr 0 goto :DO_MASK
 
 :MASK_DONE
 
-if not defined PAPER_OVL goto :OVL_DONE
+if not defined TEXTURE_OVL goto :OVL_DONE
+
+	if "%TEXTURE_OVL%"=="paper" goto :OVL_PAPER
+
+	:: Otherwise "%TEXTURE_OVL%"=="lcdgrain" here
+	:: LCD grain overlay (for lcd* monitor types only), doesn't need curvature
+
+	set /a "GRAINX=%OY%*%OASPECT%*50/100"
+	set /a "GRAINY=%OY%*50/100"
+
+	echo. & echo Texture overlay:
+	ffmpeg -hide_banner -y -loglevel error -stats -filter_complex ^"color=#808080:s=%GRAINX%x%GRAINY%,^
+		noise=all_seed=5150:all_strength=%LCD_GRAIN%, format=gray, ^
+		scale=%OX%:%OY%:flags=lanczos, format=rgb24 ^
+	" -frames:v 1 TMPtexture.png
+	goto :OVL_DONE
+
+:OVL_PAPER
 
 	:: Phosphor overlay for monochrome "paper white" only, doesn't need curvature
 	set /a "PAPERX=%OY%*%OASPECT%*67/100"
 	set /a "PAPERY=%OY%*67/100"
-	
+
 	echo. & echo Texture overlay:
-	ffmpeg -y -hide_banner -f lavfi -i "color=c=#808080:s=%PAPERX%x%PAPERY%" ^
+	ffmpeg -hide_banner -y -loglevel error -stats -f lavfi -i "color=c=#808080:s=%PAPERX%x%PAPERY%" ^
 	-filter_complex ^"^
 		noise=all_seed=5150:all_strength=100:all_flags=u, format=gray, ^
 		lutrgb='r=(val-70)*255/115:g=(val-70)*255/115:b=(val-70)*255/115', ^
@@ -264,9 +298,36 @@ if not defined PAPER_OVL goto :OVL_DONE
 		gblur=sigma=3:steps=6,^
 		lutrgb='r=gammaval(0.454545):g=gammaval(0.454545):b=gammaval(0.454545)',^
 		format=gbrp16le,format=rgb24^
-	" -frames:v 1 TMPpaper.png
+	" -frames:v 1 TMPtexture.png
 
 :OVL_DONE
+
+::+++++++++++++++++++++++++++++++++++::
+:: Create discrete pixel grid if set ::
+::+++++++++++++++++++++++++++++++++++::
+
+IF /i "%FLAT_PANEL%" neq "yes" goto :PXGRID_DONE
+
+set LUM_GAP=255-255*%PXGRID_ALPHA% & set LUM_PX=255
+if defined PXGRID_INVERT (set LUM_GAP=255*%PXGRID_ALPHA% & set LUM_PX=0)
+set /a "GX=%PRESCALE_BY%/%PX_FACTOR_X%"
+set /a "GY=%PRESCALE_BY%/%PX_FACTOR_Y%"
+
+echo. & echo Grid:
+ffmpeg -hide_banner -loglevel error -stats -y -f lavfi ^
+-i nullsrc=s=%SXINT%x%PY% -vf ^"^
+	format=gray,^
+	geq=lum='if(gte(mod(X,%GX%),%GX%-%PX_X_GAP%)+gte(mod(Y,%GY%),%GY%-%PX_Y_GAP%),%LUM_GAP%,%LUM_PX%)',^
+	format=gbrp16le,^
+	lutrgb='r=gammaval(2.2):g=gammaval(2.2):b=gammaval(2.2)',^
+	scale=%PX%:ih:flags=bicubic,^
+	lutrgb='r=gammaval(0.454545):g=gammaval(0.454545):b=gammaval(0.454545)',^
+	format=gbrp16le,format=rgb24^" ^
+-frames:v 1 TMPgrid.png	
+
+if errorlevel 1 exit /b
+
+:PXGRID_DONE
 
 ::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
 :: Pre-process if needed: phosphor decay (video only), invert, pixel latency (video only) ::
@@ -304,17 +365,29 @@ if defined PREPROCESS (
 	SET SCALESRC=TMPstep00.%TMP_EXT%
 )
 
-::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
-:: Scale nearest neighbor, go 16bit/channel, apply gamma & pixel blur ::
-::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
+::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
+:: Scale nearest neighbor, go 16bit/channel, apply grid, gamma & pixel blur ::
+::++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++::
+
+:: If we have a grid, the inputs + first part of filter are different
+
+SET GRIDBLENDMODE='multiply' & if defined PXGRID_INVERT (set GRIDBLENDMODE='screen')
+SET GRIDFILTERFRAG=
+
+IF /i "%FLAT_PANEL%"=="yes" ( SET GRIDFILTERFRAG=^
+ 	[scaled];^
+ 	movie=TMPgrid.png[grid];^
+ 	[scaled][grid]blend=all_mode=%GRIDBLENDMODE%
+)
 
 echo. & echo Step01:
-ffmpeg -hide_banner -loglevel error -stats -y -i %SCALESRC% -vf ^"^
+ffmpeg -hide_banner -loglevel error -stats -y -i %SCALESRC% -filter_complex ^"^
 	scale=iw*%PRESCALE_BY%:ih:flags=neighbor,^
 	format=gbrp16le,^
 	lutrgb='r=gammaval(2.2):g=gammaval(2.2):b=gammaval(2.2)',^
 	scale=iw*%PX_ASPECT%:ih:flags=fast_bilinear,^
-	scale=iw:ih*%PRESCALE_BY%:flags=neighbor,^
+	scale=iw:ih*%PRESCALE_BY%:flags=neighbor^
+	!GRIDFILTERFRAG!,^
 	gblur=sigma=%H_PX_BLUR%/100*%PRESCALE_BY%*%PX_ASPECT%:sigmaV=%VSIGMA%:steps=3^" ^
 -c:v ffv1 -c:a copy TMPstep01.mkv
 
@@ -353,6 +426,7 @@ if errorlevel 1 exit /b
 
 :: Can be skipped if none of the above are needed:
 if /i "%SCANLINES_ON%"=="no" if "%BEZEL_CURVATURE%"=="%CRT_CURVATURE%" if %CORNER_RADIUS% equ 0 if defined SKIP_OVL if defined SKIP_BRI (
+	if exist TMPstep03.%TMP_EXT% del TMPstep03.%TMP_EXT%
 	ren TMPstep02.%TMP_EXT% TMPstep03.%TMP_EXT%
 	goto :STEP03_DONE
 )
@@ -407,7 +481,15 @@ if errorlevel 1 exit /b
 for /f "tokens=*" %%a IN (TMPcrop) do set CROPTEMP=%%a
 for %%a IN (%CROPTEMP%) do set CROP_STR=%%a
 
-if defined PAPER_OVL (set PAPER_STR=[nop];movie=TMPpaper.png[paper];[nop][paper]blend=all_mode='multiply':eof_action='repeat')
+if defined TEXTURE_OVL (
+	if "%TEXTURE_OVL%"=="paper" set TEXTURE_STR=[nop];movie=TMPtexture.png[paper];[nop][paper]blend=all_mode='multiply':eof_action='repeat'
+	if "%TEXTURE_OVL%"=="lcdgrain" set TEXTURE_STR=^
+		,split[og1][og2];^
+		movie=TMPtexture.png[lcd];^
+		[lcd][og1]blend=all_mode='vividlight':eof_action='repeat'[notquite];^
+		[og2]lutrgb=r='clip^(val,0,110^)':g='clip^(val,0,110^)':b='clip^(val,0,110^)'[fix];^
+		[fix][notquite]blend=all_mode='lighten':eof_action='repeat'
+)
 
 echo. & echo Output:
 ffmpeg -hide_banner -loglevel error -stats -y -i TMPstep03.%TMP_EXT% -filter_complex ^"^
@@ -423,7 +505,7 @@ ffmpeg -hide_banner -loglevel error -stats -y -i TMPstep03.%TMP_EXT% -filter_com
 	setsar=sar=1/1,^
 	%VIGNETTE_STR%^
 	pad=%OX%:%OY%:-1:-1:black^
-	%PAPER_STR%^
+	%TEXTURE_STR%^
 " %FIN_OUTPARAMS% "%OUTFILE%"
 if errorlevel 1 exit /b
 
@@ -431,7 +513,7 @@ if errorlevel 1 exit /b
 :: Clean up ::
 ::++++++++++::
 
-del TMPbezel.png;TMPscanline?.png;TMPshadow*.png;TMPpaper.png;TMPstep0?.*;TMPbloom.*;TMPcrop
+del TMPbezel.png;TMPscanline?.png;TMPshadow*.png;TMPtexture.png;TMPgrid.png;TMPstep0?.*;TMPbloom.*;TMPcrop
 @echo. & echo ------------------------
 @echo Output file: %OUTFILE%
 @echo Started:     %FFSTART%
